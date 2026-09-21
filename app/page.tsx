@@ -1,6 +1,13 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import {
+  DragEvent,
+  FormEvent,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 type NoteType = "evaluation" | "appreciation";
 
@@ -12,9 +19,26 @@ type MemberSheet = {
   appreciations: string[];
 };
 
+type MemberInfo = {
+  id: number;
+  name: string;
+};
+
 type ActiveInput = {
   memberId: number;
   type: NoteType;
+} | null;
+
+type EditingNote = {
+  memberId: number;
+  type: NoteType;
+  index: number;
+} | null;
+
+type DraggedNote = {
+  memberId: number;
+  type: NoteType;
+  index: number;
 } | null;
 
 const months = [
@@ -86,12 +110,111 @@ const starterSheets: MemberSheet[] = [
   },
 ];
 
+function NoteCell({
+  note,
+  type,
+  isEditing,
+  isDragging,
+  draft,
+  onDraftChange,
+  onStartEdit,
+  onSaveEdit,
+  onCancelEdit,
+  onDelete,
+  onDragStart,
+  onDragEnd,
+  onDragOver,
+  onDrop,
+}: {
+  note: string | undefined;
+  type: NoteType;
+  isEditing: boolean;
+  isDragging: boolean;
+  draft: string;
+  onDraftChange: (value: string) => void;
+  onStartEdit: () => void;
+  onSaveEdit: (event: FormEvent<HTMLFormElement>) => void;
+  onCancelEdit: () => void;
+  onDelete: () => void;
+  onDragStart: (event: DragEvent<HTMLDivElement>) => void;
+  onDragEnd: () => void;
+  onDragOver: (event: DragEvent<HTMLDivElement>) => void;
+  onDrop: (event: DragEvent<HTMLDivElement>) => void;
+}) {
+  const label = type === "evaluation" ? "evaluasi" : "apresiasi";
+
+  if (!note) {
+    return (
+      <div className="cell" onDragOver={onDragOver} onDrop={onDrop} />
+    );
+  }
+
+  if (isEditing) {
+    return (
+      <div className="cell">
+        <form className="note-edit-form" onSubmit={onSaveEdit}>
+          <input
+            autoFocus
+            aria-label={`Ubah ${label}`}
+            onChange={(event) => onDraftChange(event.target.value)}
+            type="text"
+            value={draft}
+          />
+          <div className="note-edit-actions">
+            <button type="submit">Simpan</button>
+            <button onClick={onCancelEdit} type="button">
+              Batal
+            </button>
+          </div>
+        </form>
+      </div>
+    );
+  }
+
+  return (
+    <div className="cell" onDragOver={onDragOver} onDrop={onDrop}>
+      <div
+        className={`note-item ${isDragging ? "is-note-dragging" : ""}`}
+        draggable
+        onDragEnd={onDragEnd}
+        onDragStart={onDragStart}
+        title={`Geser untuk mengubah urutan ${label}`}
+      >
+        <span>{note}</span>
+        <button
+          aria-label={`Ubah ${label}`}
+          className="note-edit-button"
+          onClick={onStartEdit}
+          type="button"
+        >
+          <img src="/test-english-assets/pencil.png" alt="" />
+        </button>
+        <button
+          aria-label={`Hapus ${label}`}
+          className="note-delete-button"
+          onClick={onDelete}
+          type="button"
+        >
+          ×
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function Home() {
   const [activeMonth, setActiveMonth] = useState("Agustus");
   const [sheets, setSheets] = useState<MemberSheet[]>(starterSheets);
   const [activeInput, setActiveInput] = useState<ActiveInput>(null);
   const [draftNote, setDraftNote] = useState("");
   const [newMemberName, setNewMemberName] = useState("");
+  const [editingMemberId, setEditingMemberId] = useState<number | null>(null);
+  const [editingName, setEditingName] = useState("");
+  const [editingNote, setEditingNote] = useState<EditingNote>(null);
+  const [editingNoteText, setEditingNoteText] = useState("");
+  const [draggedMemberId, setDraggedMemberId] = useState<number | null>(null);
+  const [draggedNote, setDraggedNote] = useState<DraggedNote>(null);
+  const tabsRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     const saved = window.localStorage.getItem("simple-team-sheets");
@@ -102,23 +225,85 @@ export default function Home() {
     window.localStorage.setItem("simple-team-sheets", JSON.stringify(sheets));
   }, [sheets]);
 
+  useEffect(() => {
+    const nav = tabsRef.current;
+    const active = nav?.querySelector<HTMLButtonElement>("button.active");
+    if (!nav || !active) return;
+
+    nav.scrollTo({
+      left: active.offsetLeft - nav.clientWidth / 2 + active.offsetWidth / 2,
+      behavior: "smooth",
+    });
+  }, [activeMonth]);
+
+  const members = useMemo(() => {
+    const seen = new Set<number>();
+    return sheets.reduce<MemberInfo[]>((list, sheet) => {
+      if (seen.has(sheet.id)) return list;
+      seen.add(sheet.id);
+      return [...list, { id: sheet.id, name: sheet.name }];
+    }, []);
+  }, [sheets]);
+
   const visibleSheets = useMemo(
-    () => sheets.filter((sheet) => sheet.month === activeMonth),
-    [activeMonth, sheets],
+    () =>
+      members.map((member) => {
+        const monthSheet = sheets.find(
+          (sheet) => sheet.id === member.id && sheet.month === activeMonth,
+        );
+
+        return (
+          monthSheet ?? {
+            id: member.id,
+            month: activeMonth,
+            name: member.name,
+            evaluations: [],
+            appreciations: [],
+          }
+        );
+      }),
+    [activeMonth, members, sheets],
   );
 
   function openNoteInput(memberId: number, type: NoteType) {
     setActiveInput({ memberId, type });
     setDraftNote("");
+    setEditingNote(null);
+    setEditingNoteText("");
   }
 
   function saveNote(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!activeInput || !draftNote.trim()) return;
 
-    setSheets((currentSheets) =>
-      currentSheets.map((sheet) => {
-        if (sheet.id !== activeInput.memberId) return sheet;
+    setSheets((currentSheets) => {
+      const targetSheet = currentSheets.find(
+        (sheet) =>
+          sheet.id === activeInput.memberId && sheet.month === activeMonth,
+      );
+      const memberName =
+        currentSheets.find((sheet) => sheet.id === activeInput.memberId)?.name ??
+        "";
+
+      if (!targetSheet) {
+        return [
+          ...currentSheets,
+          {
+            id: activeInput.memberId,
+            month: activeMonth,
+            name: memberName,
+            evaluations:
+              activeInput.type === "evaluation" ? [draftNote.trim()] : [],
+            appreciations:
+              activeInput.type === "appreciation" ? [draftNote.trim()] : [],
+          },
+        ];
+      }
+
+      return currentSheets.map((sheet) => {
+        if (sheet.id !== activeInput.memberId || sheet.month !== activeMonth) {
+          return sheet;
+        }
 
         if (activeInput.type === "evaluation") {
           return {
@@ -131,8 +316,8 @@ export default function Home() {
           ...sheet,
           appreciations: [...sheet.appreciations, draftNote.trim()],
         };
-      }),
-    );
+      });
+    });
     setActiveInput(null);
     setDraftNote("");
   }
@@ -154,14 +339,221 @@ export default function Home() {
     setNewMemberName("");
   }
 
+  function deleteNote(memberId: number, type: NoteType, noteIndex: number) {
+    cancelEditNote();
+
+    setSheets((currentSheets) =>
+      currentSheets.map((sheet) => {
+        if (sheet.id !== memberId || sheet.month !== activeMonth) return sheet;
+
+        if (type === "evaluation") {
+          return {
+            ...sheet,
+            evaluations: sheet.evaluations.filter((_, index) => index !== noteIndex),
+          };
+        }
+
+        return {
+          ...sheet,
+          appreciations: sheet.appreciations.filter(
+            (_, index) => index !== noteIndex,
+          ),
+        };
+      }),
+    );
+  }
+
+  function startEditNote(
+    memberId: number,
+    type: NoteType,
+    index: number,
+    currentNote: string | undefined,
+  ) {
+    if (!currentNote) return;
+    setEditingNote({ memberId, type, index });
+    setEditingNoteText(currentNote);
+    setActiveInput(null);
+  }
+
+  function cancelEditNote() {
+    setEditingNote(null);
+    setEditingNoteText("");
+  }
+
+  function saveEditNote(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!editingNote || !editingNoteText.trim()) return;
+
+    const nextNote = editingNoteText.trim();
+
+    setSheets((currentSheets) =>
+      currentSheets.map((sheet) => {
+        if (
+          sheet.id !== editingNote.memberId ||
+          sheet.month !== activeMonth
+        ) {
+          return sheet;
+        }
+
+        if (editingNote.type === "evaluation") {
+          return {
+            ...sheet,
+            evaluations: sheet.evaluations.map((note, index) =>
+              index === editingNote.index ? nextNote : note,
+            ),
+          };
+        }
+
+        return {
+          ...sheet,
+          appreciations: sheet.appreciations.map((note, index) =>
+            index === editingNote.index ? nextNote : note,
+          ),
+        };
+      }),
+    );
+    cancelEditNote();
+  }
+
+  function isEditingNote(memberId: number, type: NoteType, index: number) {
+    return (
+      editingNote?.memberId === memberId &&
+      editingNote.type === type &&
+      editingNote.index === index
+    );
+  }
+
+  function startEditMember(member: MemberSheet) {
+    setEditingMemberId(member.id);
+    setEditingName(member.name);
+    setActiveInput(null);
+    cancelEditNote();
+  }
+
+  function saveMemberName(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!editingMemberId || !editingName.trim()) return;
+
+    setSheets((currentSheets) =>
+      currentSheets.map((sheet) =>
+        sheet.id === editingMemberId
+          ? { ...sheet, name: editingName.trim() }
+          : sheet,
+      ),
+    );
+    setEditingMemberId(null);
+    setEditingName("");
+  }
+
+  function startDragMember(
+    event: DragEvent<HTMLDivElement>,
+    memberId: number,
+  ) {
+    setDraggedNote(null);
+    setDraggedMemberId(memberId);
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", String(memberId));
+  }
+
+  function dropMember(targetMemberId: number) {
+    if (!draggedMemberId || draggedMemberId === targetMemberId) {
+      setDraggedMemberId(null);
+      return;
+    }
+
+    setSheets((currentSheets) => {
+      const order = currentSheets.reduce<number[]>((list, sheet) => {
+        if (list.includes(sheet.id)) return list;
+        return [...list, sheet.id];
+      }, []);
+      const draggedIndex = order.indexOf(draggedMemberId);
+      const targetIndex = order.indexOf(targetMemberId);
+      if (draggedIndex === -1 || targetIndex === -1) return currentSheets;
+
+      const nextOrder = order.filter((id) => id !== draggedMemberId);
+      nextOrder.splice(targetIndex, 0, draggedMemberId);
+      const orderMap = new Map(nextOrder.map((id, index) => [id, index]));
+
+      return [...currentSheets].sort((first, second) => {
+        const firstOrder = orderMap.get(first.id) ?? 0;
+        const secondOrder = orderMap.get(second.id) ?? 0;
+        if (firstOrder !== secondOrder) return firstOrder - secondOrder;
+        return months.indexOf(first.month) - months.indexOf(second.month);
+      });
+    });
+
+    setDraggedMemberId(null);
+  }
+
+  function startDragNote(
+    event: DragEvent<HTMLDivElement>,
+    memberId: number,
+    type: NoteType,
+    index: number,
+  ) {
+    event.stopPropagation();
+    cancelEditNote();
+    setDraggedMemberId(null);
+    setDraggedNote({ memberId, type, index });
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", `${memberId}-${type}-${index}`);
+  }
+
+  function canDropNote(memberId: number, type: NoteType) {
+    return draggedNote?.memberId === memberId && draggedNote.type === type;
+  }
+
+  function dropNote(
+    event: DragEvent<HTMLDivElement>,
+    memberId: number,
+    type: NoteType,
+    targetIndex: number,
+  ) {
+    event.preventDefault();
+    event.stopPropagation();
+
+    if (!draggedNote || !canDropNote(memberId, type)) {
+      setDraggedNote(null);
+      return;
+    }
+
+    setSheets((currentSheets) =>
+      currentSheets.map((sheet) => {
+        if (sheet.id !== memberId || sheet.month !== activeMonth) return sheet;
+
+        const notes =
+          type === "evaluation" ? sheet.evaluations : sheet.appreciations;
+        if (draggedNote.index < 0 || draggedNote.index >= notes.length) {
+          return sheet;
+        }
+
+        const reorderedNotes = [...notes];
+        const [movedNote] = reorderedNotes.splice(draggedNote.index, 1);
+        const nextTargetIndex = Math.min(targetIndex, reorderedNotes.length);
+        reorderedNotes.splice(nextTargetIndex, 0, movedNote);
+
+        return type === "evaluation"
+          ? { ...sheet, evaluations: reorderedNotes }
+          : { ...sheet, appreciations: reorderedNotes };
+      }),
+    );
+
+    setDraggedNote(null);
+  }
+
   return (
     <main className="page">
       <section className="sheet">
-        <header className="toolbar">
-          <div>
-            <p>Evaluasi & Apresiasi Tim</p>
-            <h1>{activeMonth}</h1>
-          </div>
+        <section className="hero-card">
+          <img
+            alt="Mr.BOB Super Seru"
+            className="hero-icon"
+            src="/test-english-assets/logo-mrbob.png"
+          />
+          <h2>Evaluasi Creative Marketing</h2>
+        </section>
+
+        <div className="sheet-actions">
           <form className="add-member" onSubmit={addMember}>
             <input
               aria-label="Nama anggota baru"
@@ -172,9 +564,9 @@ export default function Home() {
             />
             <button type="submit">+ Anggota</button>
           </form>
-        </header>
+        </div>
 
-        <nav className="tabs" aria-label="Pilih bulan">
+        <nav className="tabs" aria-label="Pilih bulan" ref={tabsRef}>
           {months.map((month) => (
             <button
               className={month === activeMonth ? "active" : ""}
@@ -182,6 +574,7 @@ export default function Home() {
               onClick={() => {
                 setActiveMonth(month);
                 setActiveInput(null);
+                cancelEditNote();
               }}
               type="button"
             >
@@ -200,25 +593,170 @@ export default function Home() {
             const rows = Array.from({ length: rowCount }, (_, index) => index);
 
             return (
-              <section className="member-table" key={member.id}>
-                <div className="name-bar">{member.name}</div>
+              <section
+                className={`member-table ${
+                  draggedMemberId === member.id ? "is-dragging" : ""
+                }`}
+                key={member.id}
+                onDragOver={(event) => {
+                  if (draggedMemberId) event.preventDefault();
+                }}
+                onDrop={(event) => {
+                  event.preventDefault();
+                  dropMember(member.id);
+                }}
+              >
+                <div
+                  className="name-bar"
+                  draggable={editingMemberId !== member.id}
+                  onDragEnd={() => setDraggedMemberId(null)}
+                  onDragStart={(event) => startDragMember(event, member.id)}
+                  title="Geser untuk mengubah urutan"
+                >
+                  {editingMemberId === member.id ? (
+                    <form className="name-edit-form" onSubmit={saveMemberName}>
+                      <input
+                        autoFocus
+                        aria-label="Edit nama anggota"
+                        onChange={(event) => setEditingName(event.target.value)}
+                        type="text"
+                        value={editingName}
+                      />
+                      <button type="submit">Simpan</button>
+                      <button
+                        onClick={() => {
+                          setEditingMemberId(null);
+                          setEditingName("");
+                        }}
+                        type="button"
+                      >
+                        Batal
+                      </button>
+                    </form>
+                  ) : (
+                    <>
+                      <span>{member.name}</span>
+                      <button
+                        aria-label="Edit nama anggota"
+                        className="edit-name-button"
+                        onClick={() => startEditMember(member)}
+                        type="button"
+                      >
+                        <img src="/test-english-assets/pencil.png" alt="" />
+                      </button>
+                    </>
+                  )}
+                </div>
                 <div className="grid-table">
-                  <div className="head no">No</div>
-                  <div className="head">Evaluasi</div>
-                  <div className="head">Apresiasi</div>
+                  <div className="head">
+                    <img src="/test-english-assets/sticky-notes.png" alt="" />
+                    Evaluasi
+                  </div>
+                  <div className="head">
+                    <img src="/test-english-assets/badge.png" alt="" />
+                    Apresiasi
+                  </div>
 
                   {rows.map((rowIndex) => (
                     <div className="table-row" key={rowIndex}>
-                      <div className="cell number">{rowIndex + 1}</div>
-                      <div className="cell">{member.evaluations[rowIndex] || ""}</div>
-                      <div className="cell">
-                        {member.appreciations[rowIndex] || ""}
-                      </div>
+                      <NoteCell
+                        draft={editingNoteText}
+                        isDragging={
+                          draggedNote?.memberId === member.id &&
+                          draggedNote.type === "evaluation" &&
+                          draggedNote.index === rowIndex
+                        }
+                        isEditing={isEditingNote(
+                          member.id,
+                          "evaluation",
+                          rowIndex,
+                        )}
+                        note={member.evaluations[rowIndex]}
+                        onCancelEdit={cancelEditNote}
+                        onDelete={() =>
+                          deleteNote(member.id, "evaluation", rowIndex)
+                        }
+                        onDragEnd={() => setDraggedNote(null)}
+                        onDragOver={(event) => {
+                          if (canDropNote(member.id, "evaluation")) {
+                            event.preventDefault();
+                            event.stopPropagation();
+                          }
+                        }}
+                        onDragStart={(event) =>
+                          startDragNote(
+                            event,
+                            member.id,
+                            "evaluation",
+                            rowIndex,
+                          )
+                        }
+                        onDrop={(event) =>
+                          dropNote(event, member.id, "evaluation", rowIndex)
+                        }
+                        onDraftChange={setEditingNoteText}
+                        onSaveEdit={saveEditNote}
+                        onStartEdit={() =>
+                          startEditNote(
+                            member.id,
+                            "evaluation",
+                            rowIndex,
+                            member.evaluations[rowIndex],
+                          )
+                        }
+                        type="evaluation"
+                      />
+                      <NoteCell
+                        draft={editingNoteText}
+                        isDragging={
+                          draggedNote?.memberId === member.id &&
+                          draggedNote.type === "appreciation" &&
+                          draggedNote.index === rowIndex
+                        }
+                        isEditing={isEditingNote(
+                          member.id,
+                          "appreciation",
+                          rowIndex,
+                        )}
+                        note={member.appreciations[rowIndex]}
+                        onCancelEdit={cancelEditNote}
+                        onDelete={() =>
+                          deleteNote(member.id, "appreciation", rowIndex)
+                        }
+                        onDragEnd={() => setDraggedNote(null)}
+                        onDragOver={(event) => {
+                          if (canDropNote(member.id, "appreciation")) {
+                            event.preventDefault();
+                            event.stopPropagation();
+                          }
+                        }}
+                        onDragStart={(event) =>
+                          startDragNote(
+                            event,
+                            member.id,
+                            "appreciation",
+                            rowIndex,
+                          )
+                        }
+                        onDrop={(event) =>
+                          dropNote(event, member.id, "appreciation", rowIndex)
+                        }
+                        onDraftChange={setEditingNoteText}
+                        onSaveEdit={saveEditNote}
+                        onStartEdit={() =>
+                          startEditNote(
+                            member.id,
+                            "appreciation",
+                            rowIndex,
+                            member.appreciations[rowIndex],
+                          )
+                        }
+                        type="appreciation"
+                      />
                     </div>
                   ))}
 
                   <div className="add-row">
-                    <div className="cell muted" />
                     <button
                       className="plus-cell"
                       onClick={() => openNoteInput(member.id, "evaluation")}

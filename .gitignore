@@ -38,3 +38,10 @@ yarn-error.log*
 /.wrangler/
 /outputs/
 /work/
+tsconfig.tsbuildinfo
+PREVIEW-UI.html
+public/test-english-assets/*
+!public/test-english-assets/badge.png
+!public/test-english-assets/logo-mrbob.png
+!public/test-english-assets/pencil.png
+!public/test-english-assets/sticky-notes.png
