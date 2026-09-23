@@ -487,7 +487,9 @@ export default function Home() {
     loadSheetsFromGoogleSheet(GOOGLE_SHEETS_WEB_APP_URL)
       .then((remoteSheets) => {
         syncReadyRef.current = true;
-        if (remoteSheets) setSheets(withSeptemberSeedData(remoteSheets));
+        setSheets((currentSheets) =>
+          withSeptemberSeedData(remoteSheets ?? currentSheets),
+        );
         setSyncStatus("synced");
       })
       .catch(() => {
