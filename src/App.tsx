@@ -118,9 +118,187 @@ const starterSheets: MemberSheet[] = [
   },
 ];
 
+const septemberSeedSheets: MemberSheet[] = [
+  {
+    id: 1,
+    month: "September",
+    name: "Dewi Fitriana",
+    evaluations: [
+      "Project yang melebihi deadline (OKR)",
+      "Daily report yang tidak full 100%",
+    ],
+    appreciations: [
+      "Mampu membuat strategi dan testing untuk kemajuan platform",
+      "Mampu membawa team untuk achieve KPI 100% di semua team",
+      "Mampu memecahkan masalah dan memberikan tindakan preventif",
+    ],
+  },
+  {
+    id: 3,
+    month: "September",
+    name: "Cindy Viorina Rosanti",
+    evaluations: [
+      "Kurang tanggap dalam adaptasi trend yang ada",
+      "Time management yang perlu diperbaiki",
+    ],
+    appreciations: [
+      "Mampu menyelesaikan semua request dan target secara tepat waktu",
+      "Tidak mengeluh saat ada tugas yang banyak",
+    ],
+  },
+  {
+    id: 4,
+    month: "September",
+    name: "Mario Aditya",
+    evaluations: [
+      "Likes tiktok yang masih belum dapat diachive",
+      "Masih pelupa dalam tugas yang diberikan",
+      "2 kali telat upload karena proses download video yang lama",
+      "Telat upload story sehari karena sedang dalam perjalanan",
+    ],
+    appreciations: [
+      "Optimis dalam achieve target yang diberikan",
+      "Memberikan vibes tenang bahwa semuanya dapat diachieve",
+    ],
+  },
+  {
+    id: 5,
+    month: "September",
+    name: "Sulton",
+    evaluations: [
+      "Masih banyak project yang revisi",
+      "Color grading yang masih kurang",
+      "Belum bisa menentukan alurnya sendiri dan harus ditrigger dahulu",
+      "Perlu ketelitian dalam membuat video",
+    ],
+    appreciations: [
+      "Mulai ada peningkatan dalam editing konten",
+      "Tidak komplain meskipun banyak yang direvisi",
+    ],
+  },
+  {
+    id: 2,
+    month: "September",
+    name: "Ilham Krisnaldhy",
+    evaluations: [
+      "Report daily sering lupa",
+      "Perlu peningkatan dalam penentuan request yang ada sesuai dengan load team",
+    ],
+    appreciations: [
+      "Bisa membawa team improve untuk KPI daripada bulan lalu",
+      "Delegasi tugas sudah improve dan hampir tidak ada misskomunikasi",
+      "Target lead tercapai untuk pertama kalinya",
+    ],
+  },
+  {
+    id: 6,
+    month: "September",
+    name: "Zakki",
+    evaluations: [
+      "Kemampuan layout desain kurang proporsi dan dimensi",
+    ],
+    appreciations: [
+      "Mampu mengerjakan project request yang banyak di luar daily",
+      "Mampu mengerjakan desain / tugas dengan cepat",
+      "Terdapat peningkatan dalam membaca brief secara lengkap",
+    ],
+  },
+  {
+    id: 7,
+    month: "September",
+    name: "Reni",
+    evaluations: [
+      "Perlu peningkatan dalam bersosial dengan team team yang lain",
+      "Kurang dalam kemampuan menangkap dan mengimplementasikan trend yang ada",
+    ],
+    appreciations: [
+      "Cukup aktif dalam membantu pelaksanaan campaign",
+      "Mampu mencari member dan KOL sesuai dengan kebutuhan kita dengan sangat baik",
+      "Cukup baik dan berpotensi menjadi KOL specialist karena mampu approach pihak eksternal",
+      "Progress yang cukup baik dalam penulisan naskah sesuai dengan goalsnya",
+      "Quantity dan quality iklan yang sangat berprogress dari periode kemarin",
+      "Kuat dalam mencari resource data yang dibutuhkan untuk publikasi",
+      "Winning content iklan mendapatkan 3 padahal pertama kali mendapat winning content",
+    ],
+  },
+  {
+    id: 8,
+    month: "September",
+    name: "Amar",
+    evaluations: [
+      "Youtube belum bisa dihandle karena mengerjakan iklan, galaversary, dan request",
+      "Quantity konten iklan yang belum dapat diachieve (5/6) dikarenakan overload event dan rombongan",
+      "Perlu perhatian dalam penggunaan font",
+      "Color grading masih harus improve",
+      "Teaser belum bisa ke-handle karena overload",
+    ],
+    appreciations: [
+      "Revisi iklan sudah jauh berkurang daripada sebelumnya dan hanya revisi minor",
+      "Motion yang digunakan di iklan sangat bagus sehingga membuat winning content",
+      "Dapat membuat video dengan skill editing yang tinggi",
+      "Dapat mengerjakan video dengan ketepatan waktu yang berkembang",
+    ],
+  },
+  {
+    id: 9,
+    month: "September",
+    name: "Alin",
+    evaluations: [
+      "Quantity thumbnail youtube masih belum bisa dieksekusi karena overload request",
+      "Perlu pemahaman tentang depth dan layouting object desain",
+    ],
+    appreciations: [
+      "Dapat mengerjakan request dengan cukup cepat daripada periode sebelumnya asalkan ada referensi",
+      "Mampu melakukan control emosi yang cukup baik",
+    ],
+  },
+];
+
 const STORAGE_KEY = "simple-team-sheets";
 const GOOGLE_SHEETS_WEB_APP_URL = import.meta.env
   .VITE_GOOGLE_SHEETS_WEB_APP_URL as string | undefined;
+
+function mergeUniqueNotes(currentNotes: string[], seedNotes: string[]) {
+  return [
+    ...currentNotes,
+    ...seedNotes.filter((note) => !currentNotes.includes(note)),
+  ];
+}
+
+function withSeptemberSeedData(currentSheets: MemberSheet[]) {
+  const nextSheets = [...currentSheets];
+
+  septemberSeedSheets.forEach((seedSheet) => {
+    const existingMember = nextSheets.find(
+      (sheet) => sheet.name.toLowerCase() === seedSheet.name.toLowerCase(),
+    );
+    const memberId = existingMember?.id ?? seedSheet.id;
+    const existingSeptemberIndex = nextSheets.findIndex(
+      (sheet) => sheet.id === memberId && sheet.month === "September",
+    );
+
+    if (existingSeptemberIndex === -1) {
+      nextSheets.push({ ...seedSheet, id: memberId });
+      return;
+    }
+
+    const existingSheet = nextSheets[existingSeptemberIndex];
+    nextSheets[existingSeptemberIndex] = {
+      ...existingSheet,
+      name: existingMember?.name ?? seedSheet.name,
+      evaluations: mergeUniqueNotes(
+        existingSheet.evaluations,
+        seedSheet.evaluations,
+      ),
+      appreciations: mergeUniqueNotes(
+        existingSheet.appreciations,
+        seedSheet.appreciations,
+      ),
+    };
+  });
+
+  return nextSheets;
+}
 
 function parseSheets(value: unknown): MemberSheet[] | null {
   if (!Array.isArray(value)) return null;
@@ -276,7 +454,9 @@ function NoteCell({
 
 export default function Home() {
   const [activeMonth, setActiveMonth] = useState("Agustus");
-  const [sheets, setSheets] = useState<MemberSheet[]>(starterSheets);
+  const [sheets, setSheets] = useState<MemberSheet[]>(() =>
+    withSeptemberSeedData(starterSheets),
+  );
   const [activeInput, setActiveInput] = useState<ActiveInput>(null);
   const [draftNote, setDraftNote] = useState("");
   const [newMemberName, setNewMemberName] = useState("");
@@ -296,7 +476,7 @@ export default function Home() {
   useEffect(() => {
     const saved = window.localStorage.getItem(STORAGE_KEY);
     const cachedSheets = saved ? parseSheets(JSON.parse(saved)) : null;
-    if (cachedSheets) setSheets(cachedSheets);
+    if (cachedSheets) setSheets(withSeptemberSeedData(cachedSheets));
 
     if (!GOOGLE_SHEETS_WEB_APP_URL) {
       syncReadyRef.current = true;
@@ -306,7 +486,8 @@ export default function Home() {
     setSyncStatus("loading");
     loadSheetsFromGoogleSheet(GOOGLE_SHEETS_WEB_APP_URL)
       .then((remoteSheets) => {
-        if (remoteSheets) setSheets(remoteSheets);
+        syncReadyRef.current = true;
+        if (remoteSheets) setSheets(withSeptemberSeedData(remoteSheets));
         setSyncStatus("synced");
       })
       .catch(() => {
