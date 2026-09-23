@@ -1,7 +1,9 @@
 const DATABASE_SHEET_NAME = 'Database';
 const HISTORY_SHEET_NAME = 'History';
+const SUMMARY_SHEET_NAME = 'Sheet1';
 const DATABASE_HEADERS = ['key', 'json', 'updated_at'];
 const HISTORY_HEADERS = ['timestamp', 'member_id', 'member_name', 'month', 'type', 'note'];
+const SUMMARY_HEADERS = ['month', 'member_id', 'member_name', 'type', 'note'];
 
 function doGet(e) {
   const action = e.parameter.action || 'getState';
@@ -23,6 +25,7 @@ function doPost(e) {
 
   saveState(payload.sheets || []);
   writeHistory(payload.sheets || []);
+  writeSummary(payload.sheets || []);
 
   return respond({ ok: true });
 }
@@ -85,6 +88,41 @@ function writeHistory(sheets) {
   }
 }
 
+function writeSummary(sheets) {
+  const sheet = getSummarySheet();
+  sheet.clearContents();
+  sheet.getRange(1, 1, 1, SUMMARY_HEADERS.length).setValues([SUMMARY_HEADERS]);
+
+  const rows = [];
+  sheets.forEach((memberSheet) => {
+    (memberSheet.evaluations || []).forEach((note) => {
+      rows.push([
+        memberSheet.month,
+        memberSheet.id,
+        memberSheet.name,
+        'Evaluasi',
+        note,
+      ]);
+    });
+
+    (memberSheet.appreciations || []).forEach((note) => {
+      rows.push([
+        memberSheet.month,
+        memberSheet.id,
+        memberSheet.name,
+        'Apresiasi',
+        note,
+      ]);
+    });
+  });
+
+  if (rows.length > 0) {
+    sheet.getRange(2, 1, rows.length, SUMMARY_HEADERS.length).setValues(rows);
+  }
+
+  sheet.autoResizeColumns(1, SUMMARY_HEADERS.length);
+}
+
 function getDatabaseSheet() {
   const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
   let sheet = spreadsheet.getSheetByName(DATABASE_SHEET_NAME);
@@ -98,6 +136,14 @@ function getHistorySheet() {
   let sheet = spreadsheet.getSheetByName(HISTORY_SHEET_NAME);
   if (!sheet) sheet = spreadsheet.insertSheet(HISTORY_SHEET_NAME);
   sheet.getRange(1, 1, 1, HISTORY_HEADERS.length).setValues([HISTORY_HEADERS]);
+  return sheet;
+}
+
+function getSummarySheet() {
+  const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  let sheet = spreadsheet.getSheetByName(SUMMARY_SHEET_NAME);
+  if (!sheet) sheet = spreadsheet.insertSheet(SUMMARY_SHEET_NAME, 0);
+  sheet.getRange(1, 1, 1, SUMMARY_HEADERS.length).setValues([SUMMARY_HEADERS]);
   return sheet;
 }
 
