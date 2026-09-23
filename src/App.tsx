@@ -41,6 +41,14 @@ type DraggedNote = {
   index: number;
 } | null;
 
+type SyncStatus = "offline" | "loading" | "synced" | "saving" | "error";
+
+declare global {
+  interface Window {
+    [key: `__evaluasiKpiCallback_${string}`]: ((payload: unknown) => void) | undefined;
+  }
+}
+
 const months = [
   "Januari",
   "Februari",
@@ -109,6 +117,70 @@ const starterSheets: MemberSheet[] = [
     appreciations: [],
   },
 ];
+
+const STORAGE_KEY = "simple-team-sheets";
+const GOOGLE_SHEETS_WEB_APP_URL = import.meta.env
+  .VITE_GOOGLE_SHEETS_WEB_APP_URL as string | undefined;
+
+function parseSheets(value: unknown): MemberSheet[] | null {
+  if (!Array.isArray(value)) return null;
+
+  const rows = value.filter((item): item is MemberSheet => {
+    if (!item || typeof item !== "object") return false;
+    const sheet = item as MemberSheet;
+    return (
+      typeof sheet.id === "number" &&
+      typeof sheet.month === "string" &&
+      typeof sheet.name === "string" &&
+      Array.isArray(sheet.evaluations) &&
+      Array.isArray(sheet.appreciations)
+    );
+  });
+
+  return rows.length > 0 ? rows : null;
+}
+
+function loadSheetsFromGoogleSheet(url: string): Promise<MemberSheet[] | null> {
+  return new Promise((resolve, reject) => {
+    const callbackName = `__evaluasiKpiCallback_${Date.now()}`;
+    const script = document.createElement("script");
+    const separator = url.includes("?") ? "&" : "?";
+
+    window[callbackName] = (payload: unknown) => {
+      const data = payload as { ok?: boolean; sheets?: unknown; error?: string };
+      delete window[callbackName];
+      script.remove();
+
+      if (!data.ok) {
+        reject(new Error(data.error || "Google Sheet gagal dibaca"));
+        return;
+      }
+
+      resolve(parseSheets(data.sheets));
+    };
+
+    script.onerror = () => {
+      delete window[callbackName];
+      script.remove();
+      reject(new Error("Google Sheet gagal dihubungi"));
+    };
+
+    script.src = `${url}${separator}action=getState&callback=${callbackName}&_=${Date.now()}`;
+    document.body.appendChild(script);
+  });
+}
+
+function saveSheetsToGoogleSheet(url: string, sheets: MemberSheet[]) {
+  return fetch(url, {
+    method: "POST",
+    mode: "no-cors",
+    body: JSON.stringify({
+      action: "saveState",
+      sheets,
+      savedAt: new Date().toISOString(),
+    }),
+  });
+}
 
 function NoteCell({
   note,
@@ -214,15 +286,52 @@ export default function Home() {
   const [editingNoteText, setEditingNoteText] = useState("");
   const [draggedMemberId, setDraggedMemberId] = useState<number | null>(null);
   const [draggedNote, setDraggedNote] = useState<DraggedNote>(null);
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>(
+    GOOGLE_SHEETS_WEB_APP_URL ? "loading" : "offline",
+  );
   const tabsRef = useRef<HTMLElement | null>(null);
+  const syncReadyRef = useRef(false);
+  const saveTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
-    const saved = window.localStorage.getItem("simple-team-sheets");
-    if (saved) setSheets(JSON.parse(saved) as MemberSheet[]);
+    const saved = window.localStorage.getItem(STORAGE_KEY);
+    const cachedSheets = saved ? parseSheets(JSON.parse(saved)) : null;
+    if (cachedSheets) setSheets(cachedSheets);
+
+    if (!GOOGLE_SHEETS_WEB_APP_URL) {
+      syncReadyRef.current = true;
+      return;
+    }
+
+    setSyncStatus("loading");
+    loadSheetsFromGoogleSheet(GOOGLE_SHEETS_WEB_APP_URL)
+      .then((remoteSheets) => {
+        if (remoteSheets) setSheets(remoteSheets);
+        setSyncStatus("synced");
+      })
+      .catch(() => {
+        setSyncStatus("error");
+      })
+      .finally(() => {
+        syncReadyRef.current = true;
+      });
   }, []);
 
   useEffect(() => {
-    window.localStorage.setItem("simple-team-sheets", JSON.stringify(sheets));
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(sheets));
+
+    if (!GOOGLE_SHEETS_WEB_APP_URL || !syncReadyRef.current) return;
+
+    if (saveTimerRef.current) {
+      window.clearTimeout(saveTimerRef.current);
+    }
+
+    setSyncStatus("saving");
+    saveTimerRef.current = window.setTimeout(() => {
+      saveSheetsToGoogleSheet(GOOGLE_SHEETS_WEB_APP_URL, sheets)
+        .then(() => setSyncStatus("synced"))
+        .catch(() => setSyncStatus("error"));
+    }, 450);
   }, [sheets]);
 
   useEffect(() => {
@@ -551,6 +660,17 @@ export default function Home() {
             src="/test-english-assets/logo-mrbob.png"
           />
           <h2>Evaluasi Creative Marketing</h2>
+          <div className={`sync-status ${syncStatus}`}>
+            {syncStatus === "offline"
+              ? "Database lokal"
+              : syncStatus === "loading"
+                ? "Menghubungkan Google Sheet"
+                : syncStatus === "saving"
+                  ? "Menyimpan ke Google Sheet"
+                  : syncStatus === "error"
+                    ? "Google Sheet belum tersambung"
+                    : "Tersimpan di Google Sheet"}
+          </div>
         </section>
 
         <div className="sheet-actions">
